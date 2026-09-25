@@ -1,0 +1,85 @@
+name: CI/CD Pipeline
+
+on: # When should this pipeline run?
+  push:
+    branches: ["main"]
+
+  pull_request:
+    branches: ["main"]
+  
+permissions:
+  id-token: write # GitHub Actions is allowed to request an OIDC identity token.
+  contents: read # GitHub Actions can read the repository.
+
+jobs: # A job is basically a machine with a task to perform.
+
+    test:
+        name: Lint and Test
+        runs-on: ubuntu-latest # Give me an Ubuntu machine to execute this job on.
+
+        steps: # Now we tell that machine what to do, in order. each step acts as a gate before proceeding.
+
+        - name: Checkout repository
+          uses: actions/checkout@v4 # Use an existing GitHub Action someone already built.
+
+        - name: Set up Python
+          uses: actions/setup-python@v5
+          with:
+           python-version: "3.12"
+
+        - name: Install uv
+          uses: astral-sh/setup-uv@v6
+
+        - name: Install dependencies
+          run: uv sync --frozen # run means: Execute this shell command directly on the Ubuntu machine.
+        
+        - name: Run linting
+          run: uv run ruff check .  # ruff check . is a shell command that we want the Ubuntu runner to execute.
+        
+        - name: Run unit tests
+          run: uv run pytest tests/unit/
+        
+        - name: Start integration environment
+          env:
+           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          run: docker compose up -d --build --wait
+    
+        - name: Run integration tests
+          env: # Create environment variables for this step.
+           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }} # Get the value from GitHub Secrets.
+          run: uv run pytest tests/integration/
+        
+        - name: Stop integration environment
+          if: always()
+          run: docker compose down -v
+    
+    deploy:
+        name: Deploy Application
+        needs: test
+        runs-on: ubuntu-latest
+
+        if: github.event_name == 'push'
+
+        steps:
+        - name: Checkout repository
+          uses: actions/checkout@v4 # Now Ubuntu Machine #2 has our LangGraph code.
+        
+        - name: Configure AWS credentials
+          uses: aws-actions/configure-aws-credentials@v4
+          with:
+           role-to-assume: arn:aws:iam::370069284012:role/langgraph-chatbot-github-ecr-policy
+           aws-region: us-west-2
+
+        - name: Login to Amazon ECR
+          id: login-ecr
+          uses: aws-actions/amazon-ecr-login@v2
+
+        - name: Build Docker image
+          env:
+            ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+            ECR_REPOSITORY: langgraph-chatbot
+            IMAGE_TAG: ${{ github.sha }}
+          run: |
+            docker build \
+              -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
+              .

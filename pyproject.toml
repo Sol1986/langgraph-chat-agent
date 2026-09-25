@@ -1,0 +1,28 @@
+[project]
+name = "langgraph-chatbot"
+version = "0.1.0"
+description = "Tiny LangGraph + OpenAI chatbot with Postgres memory and Redis rate limiting, built as a DevOps demo app"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn",
+    "gunicorn>=23.0",
+    "langgraph>=0.6",
+    "langgraph-checkpoint-postgres>=2.0",
+    "openai>=1.60",
+    "psycopg[binary,pool]>=3.2",
+    "redis>=5.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.6",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
