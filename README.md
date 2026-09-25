@@ -1,6 +1,6 @@
-# LangGraph Chatbot (DevOps demo app)
+# LangGraph Chatbot
 
-A deliberately small chatbot used as the app for the Cloudino Docker + CI/CD + AWS assignment.
+A deliberately small chatbot used as the app for Cloudino.
 
 - **LangGraph** runs a one-node graph (`START -> chatbot -> END`) that calls **OpenAI** with the official `openai` SDK.
 - **Postgres** stores the conversation memory (LangGraph's checkpointer), so chats survive restarts and redeploys.
