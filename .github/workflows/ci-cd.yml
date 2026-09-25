@@ -69,7 +69,7 @@ jobs: # A job is basically a machine with a task to perform.
         - name: Configure AWS credentials
           uses: aws-actions/configure-aws-credentials@v4
           with:
-           role-to-assume: arn:aws:iam::370069284012:role/langgraph-chatbot-github-deploy-role
+           role-to-assume: arn:aws:iam::370069284012:role/langgraph-chatbot-github-ecr-policy
            aws-region: us-west-2
 
         - name: Login to Amazon ECR
