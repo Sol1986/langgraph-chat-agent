@@ -45,9 +45,11 @@ jobs: # A job is basically a machine with a task to perform.
           run: docker compose up -d --build --wait
     
         - name: Run integration tests
-          env: # Create environment variables for this step.
-           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }} # Get the value from GitHub Secrets.
-          run: uv run pytest tests/integration/
+          env:
+            OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+            DATABASE_URL: postgresql://app:change-me@localhost:5432/app
+            REDIS_URL: redis://localhost:6379/0
+          run: uv run pytest tests/integration/ -v
         
         - name: Stop integration environment
           if: always()
@@ -67,7 +69,7 @@ jobs: # A job is basically a machine with a task to perform.
         - name: Configure AWS credentials
           uses: aws-actions/configure-aws-credentials@v4
           with:
-           role-to-assume: arn:aws:iam::370069284012:role/langgraph-chatbot-github-ecr-policy
+           role-to-assume: arn:aws:iam::370069284012:role/langgraph-chatbot-github-deploy-role
            aws-region: us-west-2
 
         - name: Login to Amazon ECR
