@@ -74,3 +74,5 @@ def test_chat_remembers_the_conversation(client, in_memory):
     history = client.get(f"/history/{thread_id}").json()["messages"]
     assert [m["role"] for m in history] == ["user", "assistant", "user", "assistant"]
 
+def test_intentional_ci_failure():
+    assert False, "Intentional failure to demonstrate CI blocking deployment"
