@@ -7,7 +7,6 @@ requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",
     "uvicorn",
-    "gunicorn>=23.0",
     "langgraph>=0.6",
     "langgraph-checkpoint-postgres>=2.0",
     "openai>=1.60",
