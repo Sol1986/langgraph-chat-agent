@@ -72,6 +72,52 @@ uv run pytest -q
 
 The tests never call OpenAI (a fake replaces it). The unit tests run anywhere. The integration test runs only when `DATABASE_URL` and `REDIS_URL` are set, which is how CI runs it against real Postgres and Redis service containers.
 
+## Deploying to AWS (CI/CD)
+
+Every push to `main` deploys automatically through [.github/workflows/ci-cd.yml](.github/workflows/ci-cd.yml). Pull requests run only the lint and test job.
+
+```text
+Push to main
+    ↓
+Lint + Tests
+    ↓
+Docker Build
+    ↓
+Trivy Scan
+    ↓
+Push SHA image → ECR
+    ↓
+Download current ECS task definition
+    ↓
+Replace image with new SHA image
+    ↓
+Register new task definition revision
+    ↓
+Update ECS service
+    ↓
+ECS starts new container
+    ↓
+ALB health check
+    ↓
+New version live ✅
+```
+
+What each stage does:
+
+1. **Lint + Tests**: `ruff check`, unit tests, then integration tests against Postgres and Redis started with `docker compose`. If anything fails, nothing is deployed.
+2. **Docker Build**: builds the image and tags it with the git commit SHA, so every deployed version traces back to one commit.
+3. **Trivy Scan**: scans the image and fails the pipeline on any fixable `CRITICAL` or `HIGH` vulnerability.
+4. **Push SHA image → ECR**: pushes the scanned image to Amazon ECR. GitHub Actions signs in to AWS with OIDC (`AWS_ROLE_TO_ASSUME`), so no long-lived AWS keys are stored in GitHub.
+5. **Download current ECS task definition**: fetches the live `langgraph-chatbot-api` task definition from AWS.
+6. **Replace image with new SHA image**: swaps only the container image, keeping the existing secrets, ports, and settings.
+7. **Register new task definition revision**: saves the result as a new revision, so earlier revisions stay available for rollback.
+8. **Update ECS service**: points the `langgraph-chatbot-api` service in the `langgraph-chatbot-prod` cluster at the new revision.
+9. **ECS starts new container**: launches a task from the new image.
+10. **ALB health check**: the load balancer checks `/health` and sends traffic to the new task only once it passes. The pipeline waits for the service to become stable.
+11. **New version live ✅**: the old task is drained and stopped.
+
+GitHub secrets the pipeline uses: `AWS_ROLE_TO_ASSUME`, `AWS_REGION`, `AWS_ECR_REPOSITORY` (deploy job) and `OPENAI_API_KEY` (integration tests).
+
 ## What you build next (the assignment)
 
 These are intentionally not included, so you write them yourself:

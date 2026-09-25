@@ -47,7 +47,7 @@ jobs: # A job is basically a machine with a task to perform.
         - name: Run integration tests
           env:
             OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-            DATABASE_URL: postgresql://app:change-me@localhost:5432/app
+            DATABASE_URL: postgresql://app:change-me@localhost:5433/app
             REDIS_URL: redis://localhost:6379/0
           run: uv run pytest tests/integration/ -v
         
@@ -103,3 +103,26 @@ jobs: # A job is basically a machine with a task to perform.
             IMAGE_TAG: ${{ github.sha }}
           run: |
             docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+        - name: Download current ECS task definition
+          run: |
+            aws ecs describe-task-definition \
+              --task-definition langgraph-chatbot-api \
+              --query taskDefinition \
+              > task-definition.json
+
+        - name: Render new image in ECS task definition
+          id: task-def
+          uses: aws-actions/amazon-ecs-render-task-definition@v1
+          with:
+            task-definition: task-definition.json
+            container-name: langgraph-chatbot-api
+            image: ${{ steps.login-ecr.outputs.registry }}/${{ secrets.AWS_ECR_REPOSITORY }}:${{ github.sha }}
+
+        - name: Deploy to ECS
+          uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+          with:
+            task-definition: ${{ steps.task-def.outputs.task-definition }}
+            service: langgraph-chatbot-api
+            cluster: langgraph-chatbot-prod
+            wait-for-service-stability: true
