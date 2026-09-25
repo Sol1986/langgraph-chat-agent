@@ -10,6 +10,10 @@ RUN uv sync --frozen --no-dev --no-install-project
 
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS runtime
 
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 # Copy the virtual environment created by uv
