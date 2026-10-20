@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: PersistentVolumeClaim 
+
+metadata:
+  name: postgres-data
+  namespace: cloudino-devops
+
+spec:
+  accessModes:
+    - ReadWriteOnce
+
+  resources:
+    requests:
+      storage: 1Gi
+
+# PostgreSQL needs 1 GiB of persistent storage that can be mounted read/write by a node.

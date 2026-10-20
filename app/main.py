@@ -71,7 +71,7 @@ def create_app() -> FastAPI:
         # This is what the ALB and ECS health checks call.
         if os.getenv("FORCE_UNHEALTHY") == "1":  # switch for the rollback drill
             return JSONResponse(content={"status": "unhealthy"}, status_code=503)
-        return {"status": "healthy"}
+        return {"status": "healthy", "version": "v2"}
 
     @app.get("/health/ready")
     def ready():

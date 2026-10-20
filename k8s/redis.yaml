@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment # Keep one Redis Pod running.
+
+metadata:
+  name: redis
+  namespace: cloudino-devops
+
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: redis
+
+  template:
+    metadata:
+      labels:
+        app: redis
+
+    spec:
+      containers:
+        - name: redis
+          image: redis:8
+
+          ports:
+            - containerPort: 6379
+
+---
+apiVersion: v1
+kind: Service # I want to expose my Redis Pod to a stable network endpoint called redis.The Service is what will allow your API to use:redis://redis:6379/0
+
+metadata:
+  name: redis
+  namespace: cloudino-devops
+
+spec:
+  selector:
+    app: redis
+
+  ports:
+    - port: 6379
+      targetPort: 6379

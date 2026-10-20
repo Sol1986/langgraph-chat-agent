@@ -29,5 +29,10 @@ ENV PATH="/app/.venv/bin:$PATH"
 RUN useradd --system --no-create-home --uid 10001 appuser
 USER appuser
 
+# Port is configurable at runtime (docker run -e PORT=9000 ...); defaults to 8000
+ENV PORT=8000
+EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Shell form so ${PORT} expands; exec keeps uvicorn as PID 1 so it gets stop signals
+# Adding exec right before uvicorn tells the hidden shell: "Initialize the variable, and then immediately destroy yourself and let Uvicorn take over your exact position as PID 1
+CMD exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT}

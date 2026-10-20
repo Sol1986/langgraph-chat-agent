@@ -532,3 +532,657 @@ FastAPI / LangGraph
   v
 Response
 ```
+
+---
+
+### Kubernetes: Deploy, Scale & Operate Containerized Applications
+
+### 1. Project Overview
+
+This project deploys the containerized LangGraph Chatbot API to Kubernetes.
+
+The application was deployed to a local Kubernetes cluster using kind. The implementation demonstrates Kubernetes deployments, services, configuration management, secrets, health probes, scaling, rolling updates, rollback, persistent storage, troubleshooting, and security.
+
+The application uses:
+
+- FastAPI application
+- PostgreSQL
+- Redis
+- Docker
+- Kubernetes
+- kind
+- kubectl
+
+---
+
+### 2. Architecture
+
+Application flow:
+
+User  
+→ Local port-forward  
+→ Kubernetes ClusterIP Service  
+→ LangGraph Chatbot API Pods  
+→ PostgreSQL / Redis
+
+```mermaid
+flowchart TB
+    User["User / Client"]
+
+    subgraph Kind["kind Kubernetes Cluster"]
+        Service["ClusterIP Service<br/>langgraph-chatbot-api"]
+
+        subgraph Deployment["API Deployment"]
+            Pod1["API Pod<br/>FastAPI"]
+            Pod2["API Pod<br/>FastAPI"]
+        end
+
+        Config["ConfigMap"]
+        Secret["Secret"]
+
+        RedisService["Redis Service"]
+        Redis["Redis Pod"]
+
+        PostgresService["PostgreSQL Service"]
+        Postgres["PostgreSQL Pod"]
+        PVC["PersistentVolumeClaim"]
+        PV["PersistentVolume"]
+    end
+
+    User -->|"kubectl port-forward<br/>localhost:8080"| Service
+
+    Service --> Pod1
+    Service --> Pod2
+
+    Config --> Pod1
+    Config --> Pod2
+    Secret --> Pod1
+    Secret --> Pod2
+
+    Pod1 --> RedisService
+    Pod2 --> RedisService
+    RedisService --> Redis
+
+    Pod1 --> PostgresService
+    Pod2 --> PostgresService
+    PostgresService --> Postgres
+
+    Postgres --> PVC
+    PVC --> PV
+```
+
+The API is managed by a Kubernetes Deployment with two replicas.
+
+The Service provides a stable endpoint and routes traffic to ready API Pods using Kubernetes labels.
+
+PostgreSQL and Redis are available to the API through their own Kubernetes Services.
+
+---
+
+### 3. Kubernetes Environment
+
+Local Kubernetes environment:
+
+- Kubernetes tool: kind
+- Cluster name: `cloudino`
+- Namespace: `cloudino-devops`
+- Kubernetes node: `cloudino-control-plane`
+
+Cluster verification:
+
+```powershell
+kubectl cluster-info --context kind-cloudino
+kubectl get nodes
+```
+
+The application resources are isolated inside:
+
+```text
+cloudino-devops
+```
+
+---
+
+### 4. Kubernetes Resources
+
+The project includes Kubernetes manifests for:
+
+- Namespace
+- API Deployment
+- API Service
+- ConfigMap
+- Secret
+- PostgreSQL Deployment and Service
+- Redis Deployment and Service
+- PostgreSQL PersistentVolumeClaim
+- Troubleshooting test workloads
+
+The API Deployment normally maintains:
+
+```yaml
+replicas: 2
+```
+
+Kubernetes continuously reconciles the actual state of the cluster with this desired state.
+
+---
+
+### 5. Docker Image
+
+The application Docker image is:
+
+```text
+langgraph-chatbot-demo-api:v2
+```
+
+The image was loaded into the local kind cluster using:
+
+```powershell
+kind load docker-image langgraph-chatbot-demo-api:v2 --name cloudino
+```
+
+The application runs as a non-root user:
+
+```dockerfile
+RUN useradd --system --no-create-home --uid 10001 appuser
+USER appuser
+```
+
+The application port is configurable:
+
+```dockerfile
+ENV PORT=8000
+CMD exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT}
+```
+
+---
+
+### 6. Deployment and Resource Management
+
+The API is managed by a Kubernetes Deployment.
+
+CPU and memory requests and limits are configured:
+
+```yaml
+resources:
+  requests:
+    cpu: "100m"
+    memory: "128Mi"
+  limits:
+    cpu: "500m"
+    memory: "512Mi"
+```
+
+Requests help Kubernetes schedule the Pod onto a suitable node.
+
+Limits prevent the container from consuming unlimited resources.
+
+---
+
+### 7. Kubernetes Networking
+
+The API is exposed internally using a ClusterIP Service:
+
+```text
+langgraph-chatbot-api
+```
+
+The Service selects Pods using:
+
+```yaml
+selector:
+  app: langgraph-chatbot
+```
+
+Individual Pod IP addresses are not used by clients because Pods can be destroyed and recreated with different IP addresses.
+
+Kubernetes Services provide stable networking while dynamically discovering matching Pods.
+
+Local access was demonstrated using:
+
+```powershell
+kubectl port-forward service/langgraph-chatbot-api 8080:8000 -n cloudino-devops
+```
+
+The application was then tested using:
+
+```powershell
+Invoke-RestMethod http://localhost:8080/health
+```
+
+Example response:
+
+```text
+status   version
+------   -------
+healthy  v2
+```
+
+Pod replacement was also tested. One API Pod was manually deleted, the Deployment automatically created a replacement, and the Service remained available.
+
+Within the namespace, Kubernetes DNS also allows workloads to communicate using Service names such as:
+
+```text
+postgres
+redis
+langgraph-chatbot-api
+```
+
+---
+
+### 8. ConfigMap and Secret
+
+Non-sensitive application configuration is stored in a ConfigMap.
+
+Examples include:
+
+```text
+REDIS_URL
+APP_ENV
+```
+
+Sensitive configuration is stored using a Kubernetes Secret.
+
+Example:
+
+```text
+DATABASE_PASSWORD
+```
+
+The Deployment references these resources and injects their values into the application container at runtime.
+
+This keeps runtime configuration separate from the Docker image.
+
+The demonstration Secret uses a fake development credential. Real production credentials should not be committed to Git. Kubernetes Secret values encoded using base64 should not be considered encrypted simply because they are encoded.
+
+---
+
+### 9. Health Checks
+
+The application provides separate liveness and readiness endpoints.
+
+Liveness:
+
+```text
+/health
+```
+
+Readiness:
+
+```text
+/health/ready
+```
+
+The Kubernetes Deployment uses:
+
+```yaml
+readinessProbe:
+  httpGet:
+    path: /health/ready
+    port: 8000
+
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 8000
+```
+
+Liveness determines whether the application container should continue running.
+
+Readiness determines whether the Pod should receive Service traffic.
+
+A readiness failure was intentionally tested. The container remained running but the affected Pod was not considered ready for Service traffic.
+
+---
+
+### 10. Scaling
+
+The API Deployment was initially configured with two replicas.
+
+Manual scaling was tested using:
+
+```powershell
+kubectl scale deployment langgraph-chatbot-api --replicas=4 -n cloudino-devops
+```
+
+Kubernetes created additional Pods until four replicas were available.
+
+The Deployment was then scaled back to two:
+
+```powershell
+kubectl scale deployment langgraph-chatbot-api --replicas=2 -n cloudino-devops
+```
+
+The Service automatically discovered the additional ready Pods without requiring networking configuration changes.
+
+---
+
+### 11. Rolling Updates and Rollback
+
+The Deployment uses the following rolling update strategy:
+
+```yaml
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxUnavailable: 0
+    maxSurge: 1
+```
+
+The application was upgraded from:
+
+```text
+v1 → v2
+```
+
+The v2 `/health` response includes the application version so the successful update could be verified.
+
+The rollout was monitored using:
+
+```powershell
+kubectl rollout status deployment/langgraph-chatbot-api -n cloudino-devops
+```
+
+Rollout history was inspected using:
+
+```powershell
+kubectl rollout history deployment/langgraph-chatbot-api -n cloudino-devops
+```
+
+#### Failed Deployment
+
+A nonexistent image was intentionally deployed:
+
+```text
+langgraph-chatbot-demo-api:v999
+```
+
+The new Pod entered:
+
+```text
+ImagePullBackOff
+```
+
+The existing healthy v2 Pods remained available because the failed replacement could not become ready.
+
+The failed rollout was recovered using:
+
+```powershell
+kubectl rollout undo deployment/langgraph-chatbot-api -n cloudino-devops
+```
+
+The Deployment successfully returned to v2.
+
+---
+
+### 12. Persistent Storage
+
+PostgreSQL was configured with a PersistentVolumeClaim:
+
+```text
+postgres-data
+```
+
+The PVC requests:
+
+```text
+1Gi
+```
+
+The local kind cluster uses the default StorageClass:
+
+```text
+standard
+```
+
+with the local-path provisioner.
+
+Kubernetes dynamically provisioned a PersistentVolume and bound it to the PostgreSQL PVC.
+
+PostgreSQL mounts the persistent storage at:
+
+```text
+/var/lib/postgresql/data
+```
+
+Persistence was tested by:
+
+1. Creating a test table in PostgreSQL.
+2. Inserting test data.
+3. Deleting the PostgreSQL Pod.
+4. Allowing the Deployment to create a replacement Pod.
+5. Querying the database from the replacement Pod.
+
+The test data remained available.
+
+This demonstrates that the Pod itself is disposable while persistent database data remains on persistent storage.
+
+---
+
+### 13. Troubleshooting Exercises
+
+Several Kubernetes failures were intentionally created and diagnosed.
+
+#### CrashLoopBackOff
+
+A container was configured to exit with code 1.
+
+Diagnosis:
+
+```powershell
+kubectl get pods -n cloudino-devops
+kubectl describe pod crash-test -n cloudino-devops
+kubectl logs crash-test -n cloudino-devops
+kubectl logs crash-test -n cloudino-devops --previous
+```
+
+Root cause:
+
+```text
+Application process exited with code 1.
+```
+
+Kubernetes repeatedly restarted the container, eventually producing `CrashLoopBackOff`.
+
+#### ImagePullBackOff
+
+A nonexistent image tag was deployed:
+
+```text
+langgraph-chatbot-demo-api:v999
+```
+
+`kubectl describe pod` showed that Kubernetes could not obtain the requested image.
+
+The Deployment was recovered using rollback.
+
+#### Service Unreachable
+
+The API Service selector was intentionally changed to:
+
+```yaml
+app: wrong-app
+```
+
+The API Pods remained healthy, but the Service had no matching endpoints.
+
+Diagnosis included:
+
+```powershell
+kubectl describe service langgraph-chatbot-api -n cloudino-devops
+kubectl get endpointslices -n cloudino-devops
+kubectl get pods -n cloudino-devops --show-labels
+```
+
+The selector was restored to:
+
+```yaml
+app: langgraph-chatbot
+```
+
+#### Readiness Probe Failure
+
+The readiness path was temporarily changed to an invalid endpoint.
+
+The affected Pods showed:
+
+```text
+0/1 Running
+```
+
+The application process was running, but Kubernetes did not consider the Pod ready for traffic.
+
+The correct readiness endpoint was restored:
+
+```text
+/health/ready
+```
+
+#### Invalid Deployment Configuration
+
+An invalid value was accidentally configured:
+
+```text
+periodSeconds: "10 3"
+```
+
+Kubernetes rejected the Deployment update.
+
+The manifest was corrected and validated before being reapplied.
+
+#### Insufficient Resources
+
+A test Pod requested:
+
+```yaml
+cpu: "100"
+```
+
+The Pod remained:
+
+```text
+Pending
+```
+
+`kubectl describe pod` reported a scheduling failure due to insufficient CPU.
+
+The test workload was then removed.
+
+---
+
+### 14. Security
+
+The API container runs as a non-root user:
+
+```text
+UID 10001
+```
+
+This was configured in the Dockerfile and verified from the running Kubernetes Pod.
+
+The implementation also uses:
+
+- Kubernetes Secrets for sensitive runtime configuration
+- ConfigMaps for non-sensitive configuration
+- CPU and memory requests/limits
+- Namespace organization
+- No AWS credentials embedded in the application image
+- No direct exposure of individual Pods
+
+Kubernetes RBAC should follow the principle of least privilege so workloads and users only receive the Kubernetes API permissions they require.
+
+---
+
+### 15. AWS / Amazon EKS Production Design
+
+The local kind environment demonstrates the Kubernetes implementation.
+
+For a production AWS deployment, the architecture would map approximately as follows:
+
+| Local Implementation | AWS Production |
+|---|---|
+| kind | Amazon EKS |
+| Local Docker images | Amazon ECR |
+| `kubectl port-forward` | AWS load balancing / ingress |
+| local-path StorageClass | AWS-backed persistent storage where required |
+| PostgreSQL Pod + PVC | Amazon RDS should be considered |
+| Kubernetes Secret | AWS Secrets Manager integration |
+| Local/static credentials | IAM/workload identity |
+| Manual deployment | CI/CD pipeline |
+
+The CI/CD flow would become:
+
+```text
+GitHub
+→ GitHub Actions
+→ Build Docker image
+→ Push image to Amazon ECR
+→ Update EKS Deployment
+→ Kubernetes rolling update
+```
+
+Production PostgreSQL would preferably be evaluated as an Amazon RDS workload rather than automatically operating the database inside EKS.
+
+The local PVC implementation exists to demonstrate Kubernetes persistent storage concepts.
+
+---
+
+### 16. Key Kubernetes Commands
+
+```powershell
+# Cluster
+kubectl cluster-info
+kubectl get nodes
+
+# Workloads
+kubectl get pods -n cloudino-devops
+kubectl get deployments -n cloudino-devops
+
+# Networking
+kubectl get services -n cloudino-devops
+kubectl get endpointslices -n cloudino-devops
+
+# Troubleshooting
+kubectl describe pod <pod-name> -n cloudino-devops
+kubectl logs <pod-name> -n cloudino-devops
+kubectl logs <pod-name> -n cloudino-devops --previous
+
+# Scaling
+kubectl scale deployment langgraph-chatbot-api --replicas=4 -n cloudino-devops
+
+# Rollouts
+kubectl rollout status deployment/langgraph-chatbot-api -n cloudino-devops
+kubectl rollout history deployment/langgraph-chatbot-api -n cloudino-devops
+kubectl rollout undo deployment/langgraph-chatbot-api -n cloudino-devops
+
+# Storage
+kubectl get storageclass
+kubectl get pvc -n cloudino-devops
+kubectl get pv
+
+# Local application access
+kubectl port-forward service/langgraph-chatbot-api 8080:8000 -n cloudino-devops
+```
+
+---
+
+### 17. Conclusion
+
+This containerized the application to Kubernetes and demonstrated the operational capabilities provided by Kubernetes.
+
+The implementation demonstrated:
+
+- Declarative application deployment
+- Self-healing Pods
+- Stable Service networking
+- Configuration and secret management
+- Liveness and readiness probes
+- Horizontal scaling
+- Rolling updates
+- Deployment rollback
+- Persistent storage
+- Kubernetes troubleshooting
+- Container security
+- Preparation for Amazon EKS deployment
+
+The main operational difference from the previous Docker-based deployment is that Kubernetes continuously manages the application's desired state. Instead of manually managing individual containers, Deployments, Services, probes, configuration, storage, and other Kubernetes resources define how the application should run and Kubernetes works to maintain that state.

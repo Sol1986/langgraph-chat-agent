@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment #Keep one PostgreSQL Pod running.
+
+metadata:
+  name: postgres
+  namespace: cloudino-devops
+
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: postgres
+
+  template:
+    metadata:
+      labels:
+        app: postgres
+
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16
+
+          ports:
+            - containerPort: 5432
+          
+          volumeMounts:
+            - name: postgres-storage
+              mountPath: /var/lib/postgresql/data
+
+          env:
+            - name: POSTGRES_USER
+              value: app
+
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: langgraph-chatbot-secret
+                  key: DATABASE_PASSWORD
+
+            - name: POSTGRES_DB
+              value: app
+          
+      volumes:
+        - name: postgres-storage
+          persistentVolumeClaim:
+            claimName: postgres-data
+
+---
+apiVersion: v1
+kind: Service # I want to expose my PostgreSQL Pod to a stable network endpoint called postgres.
+
+metadata:
+  name: postgres
+  namespace: cloudino-devops
+
+spec:
+  selector:
+    app: postgres
+
+  ports:
+    - port: 5432
+      targetPort: 5432

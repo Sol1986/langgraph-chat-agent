@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: Deployment # What Kubernetes object am I declaring? I want a Deployment.
+
+metadata: # This identifies the object
+  name: langgraph-chatbot-api
+  namespace: cloudino-devops
+
+spec:
+  replicas: 2 # How many copies of the pod do I want to run? I want 2.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0 # During an update, don't intentionally let any of my 2 desired Pods become unavailable before their replacement is ready. Kubernetes tries to maintain the required availability while rolling out the new version.
+      maxSurge: 1 # During an update, allow Kubernetes to create 1 extra Pod above my desired 2 Pods. This allows for a smooth transition to the new version.
+
+  selector: # How do I know which Pods belong to me? I manage Pods with the label app=langgraph-chatbot.
+    matchLabels:
+      app: langgraph-chatbot # This Deployment manages Pods labeled app=langgraph-chatbot.
+
+  template: # Whenever you need to create one of my Pods, use this template.
+    metadata:
+      labels:
+        app: langgraph-chatbot
+        environment: dev
+
+    spec:
+      containers:
+        - name: api
+          image: langgraph-chatbot-demo-api:v2
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - containerPort: 8000
+
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 8000
+            initialDelaySeconds: 5 # Wait 5 seconds after starting before checking.
+            periodSeconds: 5 # Check every 5 seconds to see if the container is ready to serve traffic.
+            timeoutSeconds: 2 # If the container doesn't respond within 2 seconds, consider it not ready.
+            failureThreshold: 3 # If the container fails 3 consecutive readiness checks, mark it as not ready. This helps Kubernetes determine when to stop sending traffic to this container until it becomes ready again.
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 15 # Wait 15 seconds after starting before checking if the container is alive. This allows the application to initialize properly before Kubernetes starts monitoring its health.
+            periodSeconds: 10 # Check every 10 seconds to see if the container is alive. This helps Kubernetes determine if the application is still running and responsive.
+            timeoutSeconds: 2 # If the container doesn't respond within 2 seconds, consider it not alive. This helps Kubernetes determine if the application is still running and responsive.
+            failureThreshold: 3 # If the container fails 3 consecutive liveness checks, mark it as not alive. This helps Kubernetes determine when to restart the container to recover from a potential failure.
+
+          env:
+            - name: REDIS_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: langgraph-chatbot-config
+                  key: REDIS_URL # This environment variable is set from the Kubernetes ConfigMap named langgraph-chatbot-config, specifically from the key REDIS_URL. This allows the application to access configuration data without hardcoding it in the Deployment manifest.
+
+            - name: APP_ENV
+              valueFrom:
+                configMapKeyRef:
+                  name: langgraph-chatbot-config
+                  key: APP_ENV # This environment variable is set from the Kubernetes ConfigMap named langgraph-chatbot-config, specifically from the key APP_ENV. This allows the application to access configuration data without hardcoding it in the Deployment manifest.
+
+            - name: DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: langgraph-chatbot-secret
+                  key: DATABASE_PASSWORD # This environment variable is set from the Kubernetes Secret named langgraph-chatbot-secret, specifically from the key DATABASE_PASSWORD. This allows the application to securely access the database password without hardcoding it in the Deployment manifest.
+
+            - name: DATABASE_URL
+              value: "postgresql://app:$(DATABASE_PASSWORD)@postgres:5432/app" # This environment variable is constructed using the DATABASE_PASSWORD environment variable. It forms a PostgreSQL connection string that the application can use to connect to the database. The password is dynamically inserted into the URL, ensuring that sensitive information is not hardcoded.
+          
+          resources: # This container needs approximately this much resource available when Kubernetes decides where to schedule it.
+            requests:
+              cpu: "100m" # 0.1 CPU core
+              memory: "128Mi" # 128 MB of memory (requested memory)
+            limits: # Don't allow this container to exceed this amount.
+              cpu: "500m" # 0.5 CPU core
+              memory: "512Mi" # maximum memory

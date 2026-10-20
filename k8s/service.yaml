@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: Service
+
+metadata:
+  name: langgraph-chatbot-api
+  namespace: cloudino-devops
+
+spec:
+  type: ClusterIP # Give this application a stable endpoint inside the Kubernetes cluster.
+
+  selector:
+    app: langgraph-chatbot
+
+  ports:
+    - port: 8000 # port is the Service's port.
+      targetPort: 8000 # targetPort is the container/Pod destination port.
+
+
+# Create a Service
+# named langgraph-chatbot-api
+# inside cloudino-devops.
+
+# Make it a ClusterIP Service.
+
+# Find Pods where:
+# app=langgraph-chatbot
+
+# When traffic arrives on Service port 8000,
+# send it to port 8000 on those Pods.
